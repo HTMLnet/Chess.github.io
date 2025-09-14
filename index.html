@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ASCII Chess</title>
+</head>
+<body>
+  <h2>ASCII Chess</h2>
+
+  <label for="mode">Mode: </label>
+  <select id="mode" onchange="setMode(this.value)">
+    <option value="2p">Two Player</option>
+    <option value="easy">Bot – Easy</option>
+    <option value="intermediate">Bot – Intermediate</option>
+    <option value="medium">Bot – Medium</option>
+    <option value="hard">Bot – Hard</option>
+    <option value="insane">Bot – Insane</option>
+    <option value="genius">Bot – Mathematical Genius</option>
+  </select>
+
+  <div id="chessboard" style="position:relative; width:480px; height:480px; margin-top:10px;">
+    <img src="https://docs.racket-lang.org/chess/pict.png"
+         width="480" height="480"
+         style="position:absolute; top:0; left:0;">
+    <div id="grid"
+         style="display:grid; grid-template-columns:repeat(8,1fr); grid-template-rows:repeat(8,1fr);
+                position:absolute; top:0; left:0; width:100%; height:100%; font-size:36px;
+                text-align:center; line-height:60px;">
+    </div>
+  </div>
+
+  <h3 id="status"></h3>
+  <div id="triumph" style="position:fixed;top:0;left:0;width:100%;height:100%;
+      display:none;align-items:center;justify-content:center;
+      background:rgba(0,0,0,0.7);color:gold;font-size:50px;font-weight:bold;">
+  </div>
+
+  <script>
+    const pieces = {
+      r:"♜", n:"♞", b:"♝", q:"♛", k:"♚", p:"♟",
+      R:"♖", N:"♘", B:"♗", Q:"♕", K:"♔", P:"♙", ".":""
+    };
+
+    let board, turn, mode="2p", selected;
+
+    function reset() {
+      board = [
+        ["r","n","b","q","k","b","n","r"],
+        ["p","p","p","p","p","p","p","p"],
+        [".",".",".",".",".",".",".","."],
+        [".",".",".",".",".",".",".","."],
+        [".",".",".",".",".",".",".","."],
+        [".",".",".",".",".",".",".","."],
+        ["P","P","P","P","P","P","P","P"],
+        ["R","N","B","Q","K","B","N","R"]
+      ];
+      turn = "white";
+      selected = null;
+      renderBoard();
+    }
+
+    function setMode(m) { mode = m; reset(); }
+
+    function renderBoard(highlights=[]) {
+      const grid = document.getElementById("grid");
+      grid.innerHTML = "";
+      for (let r=0;r<8;r++) {
+        for (let c=0;c<8;c++) {
+          let div=document.createElement("div");
+          div.style.display="flex";
+          div.style.alignItems="center";
+          div.style.justifyContent="center";
+          div.style.fontSize="36px";
+          if (highlights.some(h=>h[0]===r&&h[1]===c)&&board[r][c]===".") {
+            div.textContent="•";
+          } else {
+            div.textContent=pieces[board[r][c]];
+          }
+          div.onclick=()=>handleClick(r,c);
+          grid.appendChild(div);
+        }
+      }
+      document.getElementById("status").textContent =
+        turn+"'s move" + (mode!=="2p"?" ("+mode+")":"");
+    }
+
+    function handleClick(r,c) {
+      if (selected) {
+        let [sr,sc]=selected;
+        if (r===sr&&c===sc) {selected=null; renderBoard(); return;}
+        if (getMoves(sr,sc).some(m=>m[0]===r&&m[1]===c)) {
+          makeMove(sr,sc,r,c);
+          selected=null; return;
+        } else {selected=null; renderBoard();}
+      } else {
+        let piece=board[r][c];
+        if (piece===".") return;
+        if ((turn==="white"&&piece===piece.toLowerCase())||
+            (turn==="black"&&piece===piece.toUpperCase())) return;
+        selected=[r,c];
+        renderBoard(getMoves(r,c));
+      }
+    }
+
+    function makeMove(r1,c1,r2,c2) {
+      board[r2][c2]=board[r1][c1];
+      board[r1][c1]=".";
+      turn=(turn==="white"?"black":"white");
+      renderBoard();
+      if (checkmate(turn)) { triumph(turn==="white"?"Black":"White"); return; }
+      if (mode!=="2p" && turn==="black") setTimeout(botMove,300);
+    }
+
+    // Triumph
+    function triumph(winner) {
+      let overlay=document.getElementById("triumph");
+      overlay.style.display="flex";
+      let chars=["✦","✧","✶","✷","✸","✹"];
+      let i=0;
+      setInterval(()=>{ overlay.textContent=winner+" Wins! "+chars[i%chars.length]; i++; },300);
+    }
+
+    // --- Chess rules ---
+    function getMoves(r,c) {
+      let raw=basicMoves(r,c);
+      return raw.filter(m=>!leavesKingInCheck(r,c,m[0],m[1]));
+    }
+
+    function basicMoves(r,c) {
+      let p=board[r][c]; if (p===".") return [];
+      let moves=[], dirs, r2,c2;
+      let isWhite=p===p.toUpperCase();
+      switch(p.toLowerCase()) {
+        case "p": // pawns
+          let dir=isWhite?-1:1;
+          if (inside(r+dir,c)&&board[r+dir][c]===".") {
+            moves.push([r+dir,c]);
+            if ((isWhite&&r===6)||(!isWhite&&r===1))
+              if (board[r+2*dir][c]===".") moves.push([r+2*dir,c]);
+          }
+          for (let dc of [-1,1]) {
+            r2=r+dir; c2=c+dc;
+            if (inside(r2,c2)&&board[r2][c2]!=="."
+              && isWhite!== (board[r2][c2]===board[r2][c2].toUpperCase())) moves.push([r2,c2]);
+          }
+          break;
+        case "n":
+          for (let d of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]) {
+            r2=r+d[0]; c2=c+d[1];
+            if (inside(r2,c2) && (board[r2][c2]==="."||isWhite!==(board[r2][c2]===board[r2][c2].toUpperCase()))) moves.push([r2,c2]);
+          }
+          break;
+        case "b":
+          dirs=[[1,1],[1,-1],[-1,1],[-1,-1]];
+          slide(r,c,dirs,isWhite,moves); break;
+        case "r":
+          dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+          slide(r,c,dirs,isWhite,moves); break;
+        case "q":
+          dirs=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+          slide(r,c,dirs,isWhite,moves); break;
+        case "k":
+          for (let dr=-1;dr<=1;dr++) for (let dc=-1;dc<=1;dc++) {
+            if (dr===0&&dc===0) continue;
+            r2=r+dr;c2=c+dc;
+            if (inside(r2,c2)&&(board[r2][c2]==="."||isWhite!==(board[r2][c2]===board[r2][c2].toUpperCase()))) moves.push([r2,c2]);
+          }
+          break;
+      }
+      return moves;
+    }
+
+    function slide(r,c,dirs,isWhite,moves){
+      for (let d of dirs) {
+        let r2=r+d[0], c2=c+d[1];
+        while(inside(r2,c2)) {
+          if (board[r2][c2]===".") moves.push([r2,c2]);
+          else {
+            if (isWhite!==(board[r2][c2]===board[r2][c2].toUpperCase())) moves.push([r2,c2]);
+            break;
+          }
+          r2+=d[0]; c2+=d[1];
+        }
+      }
+    }
+
+    function inside(r,c){return r>=0&&r<8&&c>=0&&c<8;}
+
+    function findKing(isWhite) {
+      for (let r=0;r<8;r++)for(let c=0;c<8;c++){
+        let p=board[r][c];
+        if (isWhite&&p==="K") return [r,c];
+        if (!isWhite&&p==="k") return [r,c];
+      }
+      return null;
+    }
+
+    function inCheck(color) {
+      let king=findKing(color==="white"); if (!king) return true;
+      for (let r=0;r<8;r++)for(let c=0;c<8;c++){
+        let p=board[r][c];
+        if (p===".") continue;
+        let enemy=(color==="white"?p===p.toLowerCase():p===p.toUpperCase());
+        if (enemy) {
+          if (basicMoves(r,c).some(m=>m[0]===king[0]&&m[1]===king[1])) return true;
+        }
+      }
+      return false;
+    }
+
+    function leavesKingInCheck(r1,c1,r2,c2){
+      let save1=board[r1][c1], save2=board[r2][c2];
+      board[r2][c2]=save1; board[r1][c1]=".";
+      let res=inCheck(save1===save1.toUpperCase()?"white":"black");
+      board[r1][c1]=save1; board[r2][c2]=save2;
+      return res;
+    }
+
+    function checkmate(color) {
+      if (!inCheck(color)) return false;
+      for (let r=0;r<8;r++)for(let c=0;c<8;c++){
+        let p=board[r][c];
+        if (p===".") continue;
+        if ((color==="white"&&p===p.toUpperCase())||
+            (color==="black"&&p===p.toLowerCase())) {
+          if (getMoves(r,c).length>0) return false;
+        }
+      }
+      return true;
+    }
+
+    // --- Bot engine ---
+    function botMove() {
+      let moves=[];
+      for (let r=0;r<8;r++)for(let c=0;c<8;c++){
+        let p=board[r][c];
+        if (p!=="."&&p===p.toLowerCase()){
+          getMoves(r,c).forEach(m=>moves.push([r,c,m[0],m[1]]));
+        }
+      }
+      if (moves.length===0) return;
+      let move;
+      if (mode==="easy") move=randomMove(moves);
+      else if (mode==="intermediate") move=captureBias(moves);
+      else if (mode==="medium") move=greedyMove(moves);
+      else {
+        let depth=2;
+        if (mode==="hard") depth=3;
+        if (mode==="insane") depth=4;
+        if (mode==="genius") depth=5;
+        move=minimaxRoot(depth,false);
+      }
+      makeMove(move[0],move[1],move[2],move[3]);
+    }
+
+    // --- Bot helpers ---
+    function randomMove(moves){ return moves[Math.floor(Math.random()*moves.length)]; }
+    function captureBias(moves){ return moves.find(m=>board[m[2]][m[3]]!==".")||randomMove(moves); }
+    function greedyMove(moves){
+      let best=null,bestScore=-999;
+      for (let m of moves){
+        let captured=board[m[2]][m[3]];
+        let score=pieceValue(captured);
+        if (score>bestScore){best=m;bestScore=score;}
+      }
+      return best||randomMove(moves);
+    }
+
+    function pieceValue(p){
+      switch(p.toLowerCase()){
+        case "p":return 100; case "n":case "b":return 300;
+        case "r":return 500; case "q":return 900;
+        case "k":return 10000; default:return 0;
+      }
+    }
+
+    // --- Minimax with alpha-beta ---
+    function evaluateBoard(){
+      let score=0;
+      for (let r=0;r<8;r++)for(let c=0;c<8;c++){
+        let p=board[r][c];
+        if (p===".") continue;
+        let val=pieceValue(p);
+        if (p===p.toUpperCase()) score+=val;
+        else score-=val;
+      }
+      return score;
+    }
+
+    function minimaxRoot(depth,isMaximizing){
+      let moves=[];
+      for (let r=0;r<8;r++)for(let c=0;c<8;c++){
+        let p=board[r][c];
+        if (p!=="."&&p===p.toLowerCase()){
+          getMoves(r,c).forEach(m=>moves.push([r,c,m[0],m[1]]));
+        }
+      }
+      let bestMove, bestVal=-999999;
+      for (let m of moves){
+        let [r1,c1,r2,c2]=m;
+        let captured=board[r2][c2];
+        board[r2][c2]=board[r1][c1]; board[r1][c1]=".";
+        let val=minimax(depth-1,true,-999999,999999);
+        board[r1][c1]=board[r2][c2]; board[r2][c2]=captured;
+        if (val>bestVal){bestVal=val; bestMove=m;}
+      }
+      return bestMove;
+    }
+
+    function minimax(depth,isMaximizing,alpha,beta){
+      if (depth===0) return evaluateBoard();
+      if (isMaximizing){ // white
+        let maxEval=-999999;
+        for (let r=0;r<8;r++)for(let c=0;c<8;c++){
+          let p=board[r][c];
+          if (p!=="."&&p===p.toUpperCase()){
+            for (let m of getMoves(r,c)){
+              let [r2,c2]=m; let captured=board[r2][c2];
+              board[r2][c2]=board[r][c]; board[r][c]=".";
+              let eval=minimax(depth-1,false,alpha,beta);
+              board[r][c]=board[r2][c2]; board[r2][c2]=captured;
+              maxEval=Math.max(maxEval,eval);
+              alpha=Math.max(alpha,eval);
+              if (beta<=alpha) return maxEval;
+            }
+          }
+        }
+        return maxEval;
+      } else { // black
+        let minEval=999999;
+        for (let r=0;r<8;r++)for(let c=0;c<8;c++){
+          let p=board[r][c];
+          if (p!=="."&&p===p.toLowerCase()){
+            for (let m of getMoves(r,c)){
+              let [r2,c2]=m; let captured=board[r2][c2];
+              board[r2][c2]=board[r][c]; board[r][c]=".";
+              let eval=minimax(depth-1,true,alpha,beta);
+              board[r][c]=board[r2][c2]; board[r2][c2]=captured;
+              minEval=Math.min(minEval,eval);
+              beta=Math.min(beta,eval);
+              if (beta<=alpha) return minEval;
+            }
+          }
+        }
+        return minEval;
+      }
+    }
+
+    reset();
+  </script>
+</body>
+  </html>
